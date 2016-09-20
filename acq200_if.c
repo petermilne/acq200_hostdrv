@@ -42,6 +42,12 @@
 #include "acq200.h"
 #include "acq200_minors.h"
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,6,35))
+void disable_local_APIC(void)
+{
+	err(" function not supported by this kernel");
+}
+#endif
 
 static ssize_t show_heartbeat(
 	struct device *dev,

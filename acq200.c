@@ -311,7 +311,7 @@ module_param(acq200_AB_dmabuf_max_order, int, 0644);
 /** Globals .. keep to a minimum! */
 char acq200_driver_name[] = "acq200";
 char acq200__driver_string[] = "D-TACQ intelligent data acquisition device";
-char acq200__driver_version[] = "$Revision: 1.60 $ B1113";
+char acq200__driver_version[] = "$Revision: 1.60 $ B1114";
 char acq200__copyright[] = "Copyright (c) 2006/7 D-TACQ Solutions Ltd";
 static struct Acq200Device* devices[MAXDEV];
 static int idx;
