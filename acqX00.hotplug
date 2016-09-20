@@ -1,0 +1,129 @@
+#!/bin/bash
+
+logger -t acqX00 hotplug $1
+env | logger -t acqX00
+
+mm=`cat /sys/$DEVPATH/dev`
+MAJOR=${mm%:*}
+MINOR=${mm#*:}
+RESID=${DEVPATH#*.}
+let SLOT=`cat /sys/$DEVPATH/device/cpci_slot`
+
+if [ $SLOT -ne -1 ];then
+	ID=$SLOT
+else
+	ID=$RESID
+fi
+
+# id may not work at hotplug time
+# consider specifying DT100_UID, DT100_GRP by number
+# or, chmod all files - set CHMOD below
+CHMOD=g+rw
+#CHMOD=ag+rw
+
+/usr/bin/id dt100 >/dev/null
+if [ $? -eq 0 ]; then
+    DT100_UID=dt100
+    DT100_GRP=dt100
+else
+    DT100_UID=root
+    DT100_GRP=root
+fi
+
+
+
+log() {
+	logger -t acqX00 $*
+}
+special() {
+	let minor="192+$1"
+	echo $minor
+}
+
+ACQ32ROOT=/dev/acq32
+
+make_acq32_nodes() {
+	mkdir -p $ACQ32ROOT
+	log ID $ID $MAJOR `special 0`
+	log ID $ID $MAJOR prev was special 0
+# old m device: special 0
+#	mknod $ACQ32ROOT/acq32.$ID.m$ID	c $MAJOR `special 0`
+# new m device : minor 237
+	mknod $ACQ32ROOT/acq32.$ID.m$ID	c $MAJOR 237
+	mknod $ACQ32ROOT/acq32.$ID.host c $MAJOR `special 3`
+	mknod $ACQ32ROOT/acq32.$ID.raw	c $MAJOR `special 1`	 
+}
+
+make_channel_nodes() {
+	if [ $? -ne 0 ]; then
+		log WARNING: unable to create channel nodes err:$?
+	else		
+		let AICHAN=`cat /sys/$DEVPATH/device/available_input_channels`
+		log INFO creating $AICHAN channel nodes
+
+		let ic=0;
+		while [ $ic -lt $AICHAN ]
+		do
+			let lchan="$ic+1"
+			node=`printf "%02d" $lchan`
+			mknod $ACQ32ROOT/acq32.$ID.$node c $MAJOR $ic
+			let ic="$ic+1"
+		done
+	
+		# dmaxx node
+		mknod $ACQ32ROOT/acq32.$ID.00 c $MAJOR 127
+	
+		chmod	$CHMOD $ACQ32ROOT/acq32.$ID.*
+		chown ${DT100_UID}.${DT100_GRP} $ACQ32ROOT/acq32.$ID.*
+	fi
+}
+
+
+ACQ200ROOT=/dev/acq200
+
+make_acq200_nodes() {
+	mkdir -p $ACQ200ROOT
+
+	let ifile=0
+	while [ $ifile -lt 8 ]
+	do
+		let lfile="$ifile+1"
+		node=`printf "%02d" $lfile`
+		let minor="128+$ifile"
+		mknod $ACQ200ROOT/acq200.$ID.$node c $MAJOR $minor
+		let ifile="$ifile+1"
+	done
+
+	mknod $ACQ200ROOT/acq200.$ID.rsh c $MAJOR 229
+
+	mknod $ACQ200ROOT/acq200.$ID.bufA c $MAJOR 124
+	mknod $ACQ200ROOT/acq200.$ID.bufB c $MAJOR 125
+	mknod $ACQ200ROOT/acq200.$ID.llhost c $MAJOR $(special 11)
+	
+	chmod $CHMOD $ACQ200ROOT/acq200.$ID.*
+	chown ${DT100_UID}.${DT100_GRP} $ACQ200ROOT/acq200.$ID.*
+
+	ln -s /sys/$DEVPATH/imask $ACQ200ROOT/acq200.$ID.imask
+}
+
+
+make_nodes() {
+	make_acq200_nodes
+	make_acq32_nodes
+	make_channel_nodes
+}
+
+remove_nodes() {
+	rm -f $ACQ32ROOT/acq32.$ID.*
+	rm -f $ACQ200ROOT/acq200.$ID.*
+}
+
+case $ACTION in
+add)
+	make_nodes;;
+remove)
+	remove_nodes;;
+esac
+
+
+

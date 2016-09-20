@@ -1,0 +1,4 @@
+# udev hotplug script (valid FC5 - wraps old hotplug script)
+
+KERNEL=="acq200.?", ACTION=="add", PROGRAM=="/etc/hotplug.d/acqX00/acqX00.hotplug" 
+

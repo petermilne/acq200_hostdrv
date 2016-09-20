@@ -1,0 +1,213 @@
+ 
+
+@mainpage "D-TACQ ACQ2xx Linux 2.6 Host PCI Driver $Revision: 1.60 $"
+
+@author Peter Milne <peter.milne@d-tacq.com>
+
+
+This README file reads best as ./html/index.html
+The tags are for processing by Doxygen.
+
+
+- Products
+ - acq200_hostdrv.ko  : Linux 2.6 host side kernel driver module
+ - /etc/hotplug.d/acqX00/acqX00.hotplug : hotplug script (valid pre-udev)
+ - /etc/udev/rules.d/20-acq2XX.rules : udev hotplug wrapper - 
+		(calls acqX00.hotplug)
+ - acqcmd.c. : utility to run commands on ACQxxx target card.
+ - htstream.c. : hi throughput streaming application.
+
+
+- Features
+ - hotplug - automated device detection. 
+ - dynamic host buffer allocation - buffer size typical 4MB.
+ - full acqcmd supported
+ - remote shell feature supported 
+ - memory mapped mailbox registers supported,
+	 so high rep rate memory mapped control loops eg llcontrol will work.
+ - works with multiple processors and APIC (with kernel support).
+
+
+- Build instructions
+ - we assume a host system for compilation, target system for deployment
+  - both systems are likely to be x86 systems running kernel 2.6.20 or newer.
+  - it is quite possible that both host and target roles are performed 
+     by the same machine.
+ - check Makefile to ensure KERNELDIR points to correct kernel headers\n
+	or set on the command line as shown below.   \n
+	on Fedora systems, 'yum install kernel-devel' fetches the headers
+ - on the host system, run: make 
+   -eg make KERNELDIR=~/PROJECTS/LINUX26/linux-2.6-x86/
+ - on the target system, run: make install
+ - to load the driver:
+  - /sbin/insmod acq200_hostdrv.ko
+
+- Usage
+ - hotplug will create device nodes automatically.
+ - use existing acqcmd -s mode to send shell commands, acqcmd -b as before
+ - llcontrol will "just work".
+
+- Notes
+ - tested on x86 32 bit systems only.
+ - tested to work with up to 2GB memory. not tested beyond 2GB.
+
+
+@page debug Debug Checklist
+In the event that the installation doesn't work, follow this checklist step by step. 
+-# Is the card visible on the bus? (example for ACQ196)
+@code
+/sbin/lspci | grep 318
+09:0d.0 Co-processor: Intel Corporation: Unknown device 0318 (rev 02)
+09:0e.0 Co-processor: Intel Corporation: Unknown device 0318 (rev 02)
+
+@endcode
+-# Did the module load?
+@code
+bash-3.00$ grep acq /proc/modules 
+acq200_hostdrv 44740 0 - Live 0xf8bfc000
+
+@endcode
+-# Were the logical device[s] created?
+@code
+bash-3.00$ ls -1 /sys/class/acqX00
+acq200.0
+acq200.1
+
+bash-3.00$ grep acq200 /proc/devices
+252 acq200.1
+253 acq200.0
+... example shows two ACQ196 devices of the class acqX00
+@endcode
+-# Can we feel the heartbeat?.
+@code
+bash-3.00$ cat /sys/class/acqX00/acq200.0/device/heartbeat 
+10
+
+... non-zero number means the card is alive
+
+@endcode
+-# Does the slot mapping correspond to physical CPCI slots?
+@code
+bash-3.00$ cat /sys/module/acq200_hostdrv/parameters/slots 
+4,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+in the above example, logical device 
+acq200.0 is in CPCI slot 4
+acq200.1 is in CPCI slot 3
+
+@endcode
+-# Did the hotplug script work?
+@code
+bash-3.00$ ls -l /dev/acq200/.*rsh
+crw-rw-r--  1 root dt100 252, 229 Aug  7 12:35 /dev/acq200/acq200.3.rsh
+crw-rw-r--  1 root dt100 253, 229 Aug  7 12:35 /dev/acq200/acq200.4.rsh
+
+# the rsh device is used by acqcmd -s SLOT
+
+bash-3.00$ ls -l /dev/acq32/acq32.?.m?
+crw-rw-r--  1 root dt100 252, 237 Aug  7 12:35 /dev/acq32/acq32.3.m3
+crw-rw-r--  1 root dt100 253, 237 Aug  7 12:35 /dev/acq32/acq32.4.m4
+
+# the .m master device is used by acqcmd -b BOARD
+
+The major number corresponds to the device number in /proc/devices
+
+NB: the hotplug script REQUIRES a user 'dt100' to exist in /etc/group, by convention, this is:
+
+bash-3.00$ grep dt100 /etc/group
+dt100:x:1001:milne
+
+@endcode
+-# Were channel data nodes created?
+@code
+bash-3.00$ ls /dev/acq32/acq32.?.[0-9][0-9]
+/dev/acq32/acq32.3.00  /dev/acq32/acq32.3.54  /dev/acq32/acq32.4.43
+/dev/acq32/acq32.3.01  /dev/acq32/acq32.3.55  /dev/acq32/acq32.4.44
+/dev/acq32/acq32.3.02  /dev/acq32/acq32.3.56  /dev/acq32/acq32.4.45
+@endcode
+-# Are we able to talk to the card using acqcmd?.
+@code
+bash-3.00$ acqcmd -b 3 getFwrev
+ACQ32:linux.initrd.extra 73.2029.2393
+ACQ216CPCI, WAV232CPCI copyright (c) D-TACQ Solutions Ltd 2003-2006
+ACQ200 image built at May 11 2007:18:06:30 Build 2201
+$Id: acq200.c,v 1.60 2012/01/18 09:34:25 pgm Exp $
+$Revision: 1.60 $
+
+bash-3.00$ acqcmd -s 3 'echo `hostname` `get.release.versions`'
+acq196_079 73.2029.2393
+EOF 17 0
+
+@endcode
+-# OK, let's capture some data!
+@code
+bash-3.00$ acqcmd -b 3 setInternalClock 250000
+ACQ32:
+bash-3.00$ acqcmd -b 3 setMode SOFT_TRANSIENT 100000
+ACQ32:
+bash-3.00$ acqcmd -b 3 setArm
+ACQ32:
+bash-3.00$ acqcmd -b 3 getState
+ACQ32:0 ST_STOP
+bash-3.00$ acqcmd -b 3 getNumSamples
+ACQ32:getNumSamples=100000 pre=0 post=100000 elapsed=100000
+bash-3.00$ dd if=/dev/acq32/acq32.3.03 bs=1000000 | hexdump | head
+0000000 0021 001d 001e 001e 001e 0021 001d 001f
+0000010 001e 001d 0021 001c 001d 001e 001d 0022
+0000020 001c 001c 001d 001d 0021 001e 001e 001c
+0000030 001c 0020 0020 001d 001e 001b 0020 001f
+
+@endcode
+@page license Software License
+@code
+*/
+/* ------------------------------------------------------------------------- */
+/*   Copyright (C) 2006-7 Peter Milne, D-TACQ Solutions Ltd
+ *                      <Peter dot Milne at D hyphen TACQ dot com>
+                                                                               
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of Version 2 of the GNU General Public License
+    as published by the Free Software Foundation;
+                                                                               
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+                                                                               
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.                */
+/* ------------------------------------------------------------------------- */
+/*
+@endcode
+@page knobs Driver Tweaks
+This is a summary of device driver tweaks.
+-/sys/module/acq200_hostdrv/parameters/
+ - acq200_debug_mbox\n
+	set non-zero to debug mailbox transactions
+ - acq200_hostdrv_debug\n
+	set greater than zero to debug driver in general
+ - acq200_stub_copy_to_user\n
+	set non-zero for performance test [do not use]
+ - acq200_use_interrupts\n
+	set zero to disable interrupts [do not use]
+ - slots\n
+	maps logical device to CPCI slot#
+
+-/sys/class/acqX00/acq200.L/device/ \n
+	where L is the logical device number 0..
+ - available_input_channels
+ - available_output_channels
+ - cpci_slot
+ - heartbeat\n
+	non-zero value indicates "card is alive"
+ - host_len\n
+	host buffer length
+ - host_pa\n
+	host buffer physical [bus] address
+ - interrupt_count
+ - irq
+ - pool
+ - subsystem_device
+ - subsystem_vendor
+
